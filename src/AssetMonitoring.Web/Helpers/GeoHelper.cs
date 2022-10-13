@@ -19,6 +19,28 @@ namespace AssetMonitoring.Web.Helpers
     }
     public class GeoHelpers
     {
+        public static string GetAddressFromLatLon(GeoLocation location)
+        {
+
+            try
+            {
+                if (locationService == null)
+                    locationService = new GoogleLocationService(Data.AppConstants.GMapApiKey);
+
+                var result = locationService.GetAddressFromLatLang(location.Latitude, location.Longitude);
+
+                if (result != null)
+                    return result.Address;
+                else
+                    return string.Empty;
+            }
+            catch (Exception)
+            {
+
+                return string.Empty;
+            }
+
+        }
         public static GoogleLocationService locationService { set; get; }
         public static (double lat, double lon) GetLocationFromAddress(string Address)
         {

@@ -59,6 +59,20 @@
                 ", Longitude: " + position.coords.longitude);
             DotNet.invokeMethodAsync('AssetMonitoring.Web', 'UpdateLocationCaller', position.coords.latitude, position.coords.longitude);
         }
+
+        function getLocation2() {
+            if (navigator.geolocation) {
+                navigator.geolocation.watchPosition(showPosition2);
+                return "Success";
+            } else {
+                return "Geolocation is not supported by this browser.";
+            }
+        }
+        function showPosition2(position) {
+            console.log("Latitude: " + position.coords.latitude +
+                ", Longitude: " + position.coords.longitude);
+            DotNet.invokeMethodAsync('AssetMonitoring.Web', 'UpdateLocationCaller2', position.coords.latitude, position.coords.longitude);
+        }
     </script>
 </body>
 </html>

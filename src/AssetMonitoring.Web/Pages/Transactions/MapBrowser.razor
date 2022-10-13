@@ -1,0 +1,474 @@
+﻿@page "/transaction/map-browser"
+@using GoogleMapsComponents
+@using GoogleMapsComponents.Maps
+@inject IJSRuntime jsRuntime
+@using AssetMonitoring.Models
+@using AssetMonitoring.Web.Data
+@using AssetMonitoring.Web.Helpers
+@inject NavigationManager NavMgr
+@using AssetMonitoring.Web.Pages.Common
+@inject IToastService toastService
+@inject DeviceService service
+
+<h2>Lihat Asset di Map</h2>
+<MudPaper Elevation="2" Class="pa-4">    
+    <MudGrid>
+        <MudItem xs="12" sm="12">
+            <MudText Align="Align.Center"><h5>Gunakan halaman ini untuk mencari asset di map.</h5></MudText>
+            <MudItem xs="12" md="12" >
+            <MudTextField Label="kata kunci pencarian" Class="mt-3" @bind-Value="Keyword" @onkeyup="@KeyUp" Variant="Variant.Outlined" Margin="Margin.Dense"></MudTextField>        
+            </MudItem>
+            <MudItem xs="12" md="12" >
+                <MudCheckBox Class="checkbox" @bind-Checked="@IsGeofence">Set Geofence</MudCheckBox>
+
+            </MudItem>
+            <MudItem xs="12" md="12" class="flex-column">
+                <MudButton ButtonType="ButtonType.Button" @onclick="SetArea" Variant="Variant.Filled" Color="Color.Primary" Class="mr-2">Terapkan Geofence</MudButton>
+                <MudButton ButtonType="ButtonType.Button" @onclick="ClearArea" Variant="Variant.Filled" Color="Color.Info" Class="mr-2">Hapus Geofence</MudButton>
+                <MudButton ButtonType="ButtonType.Button" @onclick="RefreshData" Variant="Variant.Filled" Color="Color.Success" Class="mr-2">Cari</MudButton>
+            </MudItem>
+        </MudItem>
+    </MudGrid>
+</MudPaper>
+<div class="form-group mt-2">
+    <GoogleMap @ref="@map1" Id="map1" Options="@mapOptions" Height="600" OnAfterInit="@(async () => await OnAfterInitAsync())"></GoogleMap>
+</div>
+
+@if (DataDevice == null)
+{
+    <p><em>Loading...</em></p>
+}
+else if (DataDevice.Count <= 0)
+{
+    <p><em>tidak ada data</em></p>
+}
+else
+{
+    <MudSimpleTable Dense="@dense" Hover="@hover" Bordered="@bordered" Striped="@striped" Style="overflow-x: auto;">
+        <thead>
+            <tr>
+                <th>SerialNo</th>
+                <th>Nama</th>
+                <th>Lokasi</th>
+                <th>Jenis</th>
+                <th>TanggalProduksi</th>
+                <th>TanggalPasang</th>
+                <th>Status</th>
+                <th>Jarak</th>
+                <th>Tindakan</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var item in DataDevice)
+            {
+                <tr>
+                    <td>@item.Data.SerialNo</td>
+                    <td>@item.Data.Nama</td>
+                    <td>@item.Data.Lokasi</td>
+                    <td>@item.Data.Jenis</td>
+                    <td>@item.Data.TanggalProduksi?.ToString("dd/MMM/yyyy")</td>
+                    <td>@item.Data.TanggalPasang?.ToString("dd/MMM/yyyy")</td>
+                    <td>@item.Data.Status</td>
+                    <td>
+                        @item.Distance.ToString("n2") km
+                    </td>
+                    <td>
+
+                        <MudButton ButtonType="ButtonType.Button" @onclick="(() => GetDirections2(currentLocation,new GeoLocation() { Latitude = Convert.ToDouble( item.Data.Latitude), Longitude = Convert.ToDouble(item.Data.Longitude) } ))" Variant="Variant.Filled" Size="MudBlazor.Size.Small" Color="Color.Primary" Class="mr-2">Rute</MudButton>
+
+                        @*<a @onclick:preventDefault="true" @onclick:stopPropagation="true" @onclick="(() => PrepareForView(item))" data-toggle="modal" data-target="#modalBantuan" class="icon-link"><img src="assets/img/icon/package.png"></a>
+                <a @onclick:preventDefault="true" @onclick:stopPropagation="true" @onclick="(() => PrepareForViewLaporan(item))" data-toggle="modal" data-target="#modalLaporanPalsu" class="icon-link"><img src="assets/img/icon/trash.png"></a>*@
+
+
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </MudSimpleTable>
+    <MudToolBar>
+        <MudSwitch @bind-Checked="@hover" Color="Color.Primary">Hover</MudSwitch>
+        <MudSwitch @bind-Checked="@dense" Color="Color.Secondary">Dense</MudSwitch>
+        <MudSwitch @bind-Checked="@striped" Color="Color.Tertiary">Striped</MudSwitch>
+        <MudSwitch @bind-Checked="@bordered" Color="Color.Warning">Bordered</MudSwitch>
+    </MudToolBar>
+
+
+}
+@*<DaftarBantuan @ref="db" TaskObject=@itemObject>
+    <CustomHeader>Daftar Bantuan</CustomHeader>
+</DaftarBantuan>
+
+<DaftarLaporanPalsu @ref="dlp" TaskObject=@itemObject>
+    <CustomHeader>Daftar Laporan Palsu</CustomHeader>
+</DaftarLaporanPalsu>*@
+
+@code {
+    private bool dense = false;
+    private bool hover = true;
+    private bool striped = false;
+    private bool bordered = false;
+
+    int CounterDot = 0;
+    Polyline poly;
+    Polygon SelectedArea;
+    List<LatLngLiteral> pathList;
+    List<LatLngLiteral> AreaObservation;
+    List<Marker> MapMarkers;
+    InfoWindow infoWindow;
+    Marker MyLocation;
+    public string Keyword { get; set; }
+    public bool IsGeofence { get; set; }
+
+    string customHeader = string.Empty;
+    List<DeviceExt> DataDevice;
+    Device itemObject;
+    [CascadingParameter]
+    private Task<AuthenticationState> authenticationStateTask { get; set; }
+    string UserName;
+
+    #region update location
+    GeoLocation currentLocation;
+    private static Action<GeoLocation> _action;
+
+    protected override void OnInitialized()
+    {
+        _action = UpdateLocation;
+        //map
+        mapOptions = new MapOptions()
+            {
+                Zoom = 13,
+                Center = new LatLngLiteral()
+                {
+                    Lat = -6.595038,
+                    Lng = 106.816635
+                },
+                MapTypeId = MapTypeId.Roadmap
+            };
+    }
+
+    async Task GetMyLocation()
+    {
+        await jsRuntime.InvokeVoidAsync("getLocation2");
+    }
+
+    private void UpdateLocation(GeoLocation newLocation)
+    {
+        currentLocation = newLocation;
+
+        StateHasChanged();
+    }
+
+    [JSInvokable]
+    public static void UpdateLocationCaller2(double lat, double lon)
+    {
+        _action.Invoke(new GeoLocation() { Latitude = lat, Longitude = lon });
+    }
+    #endregion
+
+    #region maps
+    private GoogleMap map1;
+    private MapOptions mapOptions;
+    private DirectionsRenderer dirRend;
+    private string _durationTotalString;
+    private string _distanceTotalString;
+
+
+    private async Task OnAfterInitAsync()
+    {
+        poly = await Polyline.CreateAsync(jsRuntime);
+        await poly.SetMap(map1.InteropObject);
+        //Create instance of DirectionRenderer
+        dirRend = await DirectionsRenderer.CreateAsync(map1.JsRuntime, new DirectionsRendererOptions()
+            {
+                Map = map1.InteropObject
+            });
+        infoWindow = await InfoWindow.CreateAsync(jsRuntime);
+        if (DataDevice == null)
+        {
+            await RefreshData();
+        }
+        await map1.InteropObject.AddListener<PolyMouseEvent>("click", async (x) =>
+        {
+            if (IsGeofence)
+            {
+                await addLatLng(x);
+            }
+        });
+    }
+    private async Task GetDirections2(GeoLocation loc1, GeoLocation loc2)
+    {
+
+
+        if (loc1 != null && loc2 != null)
+        {
+            //Direction Request
+            DirectionsRequest dr = new DirectionsRequest();
+            dr.Origin = new LatLngLiteral() { Lat = loc1.Latitude, Lng = loc1.Longitude };
+            dr.Destination = new LatLngLiteral() { Lat = loc2.Latitude, Lng = loc2.Longitude };
+            //dr.Waypoints = waypoints;
+            dr.TravelMode = TravelMode.Driving;
+
+            //Calculate Route
+            var directionsResult = await dirRend.Route(dr);
+
+            if (directionsResult != null)
+            {
+                foreach (var route in directionsResult.Routes.SelectMany(x => x.Legs))
+                {
+                    _durationTotalString += route.Duration.Text;
+                    _distanceTotalString += route.Distance.Text;
+                }
+                toastService.ShowInfo($"Durasi total: {_durationTotalString}, Jarak: {_distanceTotalString}");
+            }
+            else
+            {
+                toastService.ShowError("Rute tidak ditemukan", "Perhatian");
+            }
+        }
+
+    }
+    private async Task GetDirections(string FromAddress, string ToAddress)
+    {
+
+        var FromPos = GeoHelpers.GetLocationFromAddress(FromAddress);
+        var ToPos = GeoHelpers.GetLocationFromAddress(ToAddress);
+        if (FromPos.lat != 0 && ToPos.lat != 0)
+        {
+            //Direction Request
+            DirectionsRequest dr = new DirectionsRequest();
+            dr.Origin = new LatLngLiteral() { Lat = FromPos.lat, Lng = FromPos.lon };
+            dr.Destination = new LatLngLiteral() { Lat = ToPos.lat, Lng = ToPos.lon };
+            //dr.Waypoints = waypoints;
+            dr.TravelMode = TravelMode.Driving;
+
+            //Calculate Route
+            var directionsResult = await dirRend.Route(dr);
+
+            if (directionsResult != null)
+            {
+                foreach (var route in directionsResult.Routes.SelectMany(x => x.Legs))
+                {
+                    _durationTotalString += route.Duration.Text;
+                    _distanceTotalString += route.Distance.Text;
+                }
+            }
+            else
+            {
+                toastService.ShowError("Rute tidak ditemukan", "Perhatian");
+            }
+        }
+
+    }
+    #endregion
+
+    //private void PrepareForView(Device item)
+    //{
+    //    itemObject = item;
+    //    db.TaskObject = item;
+    //    db.ReloadData();
+    //}
+    //private void PrepareForViewLaporan(Device item)
+    //{
+    //    itemObject = item;
+    //    dlp.TaskObject = item;
+    //    dlp.ReloadData();
+    //}
+    async void KeyUp(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter")
+        {
+            await RefreshData();
+        }
+    }
+    async Task SetArea()
+    {
+        if (pathList != null && pathList.Count > 2)
+        {
+            if (AreaObservation == null)
+                AreaObservation = new List<LatLngLiteral>();
+            else AreaObservation.Clear();
+            foreach (var item in pathList)
+            {
+                AreaObservation.Add(item);
+            }
+            var newPathList = new List<LatLngLiteral>(pathList);
+            newPathList.Add(pathList[0]);
+            await poly.SetPath(newPathList);
+
+            if (SelectedArea == null)
+            {
+                SelectedArea = await Polygon.CreateAsync(jsRuntime);
+                await SelectedArea.SetMap(map1.InteropObject);
+                await SelectedArea.SetOptions(new PolygonOptions() { StrokeColor = "#2ECC71", StrokeOpacity = 0.8f, StrokeWeight = 3, FillColor = "#EAFAF1", FillOpacity = 0.3f });
+            }
+
+            await SelectedArea.SetPath(newPathList);
+            await RefreshData();
+
+            Console.WriteLine("area has been set.");
+        }
+
+    }
+    async Task ClearArea()
+    {
+        if (pathList != null)
+        {
+            pathList.Clear();
+            await poly.SetPath(pathList);
+        }
+        if (SelectedArea != null)
+        {
+            await SelectedArea.SetMap(null);
+            SelectedArea = null;
+        }
+        if (AreaObservation != null)
+        {
+            AreaObservation.Clear();
+            AreaObservation = null;
+            await RefreshData();
+        }
+
+    }
+
+    async Task addLatLng(PolyMouseEvent e)
+    {
+        CounterDot++;
+        if (pathList == null)
+            pathList = new List<LatLngLiteral>();
+        if (AreaObservation != null)
+        {
+            AreaObservation = null;
+            pathList.Clear();
+            if (SelectedArea != null)
+            {
+                await SelectedArea.SetMap(null);
+                SelectedArea = null;
+            }
+        }
+
+        pathList.Add(e.LatLng);
+
+        // Because path is an MVCArray, we can simply append a new coordinate
+        // and it will automatically appear.
+        await poly.SetPath(pathList);
+
+    }
+
+    async Task RefreshData()
+    {
+        if (map1 != null)
+        {
+            var all = service.FindByKeyword(Keyword);
+            var filtered = (IsGeofence && AreaObservation != null ? all.Where(x => Helpers.GeoHelpers.IsPointInPolygon(new LatLngLiteral() { Lat = Convert.ToDouble(x.Latitude), Lng = Convert.ToDouble(x.Longitude) }, AreaObservation)).ToList() : all);
+            if (DataDevice == null) DataDevice = new();
+            DataDevice.Clear();
+            foreach (var item in filtered)
+            {
+                DataDevice.Add(new DeviceExt() { Data = item, Distance = (currentLocation == null ? 0 : GeoTool.Distance(currentLocation.Latitude, currentLocation.Longitude, Convert.ToDouble(item.Latitude), Convert.ToDouble(item.Longitude), 'k')) });
+            }
+            if (MapMarkers != null)
+            {
+                foreach (var mark in MapMarkers)
+                {
+                    await mark.SetMap(null);
+                }
+                MapMarkers.Clear();
+            }
+            else
+            {
+                MapMarkers = new List<Marker>();
+            }
+
+            await UpdateCurrentLocation();
+
+            foreach (var item in DataDevice)
+            {
+                var marker = await Marker.CreateAsync(jsRuntime);
+                await marker.SetPosition(new LatLngLiteral() { Lat = Convert.ToDouble(item.Data.Latitude), Lng = Convert.ToDouble(item.Data.Longitude) });
+                await marker.SetMap(map1.InteropObject);
+                await marker.AddListener<GoogleMapsComponents.Maps.MouseEvent>("click", async (x) => await showInfo(x, item.Data.Id));
+                MapMarkers.Add(marker);
+            }
+            StateHasChanged();
+        }
+
+    }
+
+    async Task UpdateCurrentLocation()
+    {
+        if (MyLocation == null && currentLocation != null)
+        {
+            var marker = await Marker.CreateAsync(jsRuntime);
+            await marker.SetPosition(new LatLngLiteral() { Lat = currentLocation.Latitude, Lng = currentLocation.Longitude });
+            await marker.SetMap(map1.InteropObject);
+            await marker.AddListener<GoogleMapsComponents.Maps.MouseEvent>("click", async (x) => await showMyInfo(x));
+            MyLocation = marker;
+        }
+        else if (MyLocation != null)
+        {
+            var myloc = await MyLocation.GetPosition();
+            if (myloc.Lat != currentLocation.Latitude && myloc.Lng != currentLocation.Longitude)
+            {
+                await MyLocation.SetPosition(new LatLngLiteral() { Lat = currentLocation.Latitude, Lng = currentLocation.Longitude });
+            }
+        }
+    }
+
+    async Task showMyInfo(GoogleMapsComponents.Maps.MouseEvent e)
+    {
+        var title = $"Ini lokasi saya<br/>";
+        title += $"Lokasi: {GeoHelpers.GetAddressFromLatLon(currentLocation)}<br/>";
+
+        var contentString = $"{title}";
+        await infoWindow.SetContent(contentString);
+        await infoWindow.SetPosition(e.LatLng);
+        await infoWindow.Open(map1.InteropObject);
+    }
+    async Task showInfo(GoogleMapsComponents.Maps.MouseEvent e, long No)
+    {
+
+        var item = DataDevice.Where(x => x.Data.Id == No).FirstOrDefault();
+        var title = $"Nama : {item.Data.Nama}<br/>";
+        title += $"Serial No: {item.Data.SerialNo}<br/>";
+        title += $"Keterangan : {item.Data.Jenis}<br/>";
+        title += $"Alamat: {item.Data.Status}<br/>";
+        title += $"Tanggal Pasang: {item.Data.TanggalPasang?.ToString("dd/MMM/yyyy")}<br/>";
+        title += $"Tanggal Produksi: {item.Data.TanggalProduksi?.ToString("dd/MMM/yyyy")}<br/>";
+        title += $"Tersedia: {(item.Data.IsAvailable ? "Ya" : "Tidak")}<br/>";
+        title += $"Lokasi: {item.Data.Lokasi}<br/>";
+
+        var contentString = $"{title}";
+        await infoWindow.SetContent(contentString);
+        await infoWindow.SetPosition(e.LatLng);
+        await infoWindow.Open(map1.InteropObject);
+    }
+    protected override async Task OnInitializedAsync()
+    {
+
+
+        var user = (await authenticationStateTask).User;
+
+        if (user.Identity.IsAuthenticated)
+        {
+            UserName = user.Identity.Name;
+            // Perform an action only available to authenticated (signed-in) users.
+
+        }
+
+
+    }
+
+    protected override async System.Threading.Tasks.Task OnAfterRenderAsync(bool firstRender)
+    {
+
+
+        if (firstRender)
+        {
+
+            //get user location
+            await GetMyLocation();
+
+        }
+    }
+
+}

@@ -433,7 +433,12 @@ namespace AssetMonitoring.Models
     #endregion
 
     #region helpers
+    public class DeviceExt
+    {
+        public Device Data { get; set; }
 
+        public double Distance { get; set; }
+    }
     
     #endregion
 }

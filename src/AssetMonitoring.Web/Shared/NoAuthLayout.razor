@@ -7,8 +7,19 @@
 
 <PageTitle>Asset Monitoring</PageTitle>
 
+<BlazoredToasts Position="ToastPosition.BottomRight"
+                Timeout="10"
+                SuccessClass="success-toast-override"
+                SuccessIconClass="fa fa-thumbs-up"
+                ErrorIconClass="fa fa-bug" />
 <MudThemeProvider />
-<MudDialogProvider />
+<MudDialogProvider FullWidth="false"
+                   MaxWidth="MaxWidth.Large"
+                   CloseButton="true"
+                   DisableBackdropClick="true"
+                   NoHeader="false"
+                   Position="DialogPosition.Center"
+                   CloseOnEscapeKey="true" />
 <MudSnackbarProvider />
 
 <MudLayout>
@@ -28,17 +39,17 @@
     </MudDrawer>
     <MudMainContent>
         
-        <MudContainer MaxWidth="MaxWidth.Large" Class="my-16 pt-16">
-            @Body
+        <MudContainer MaxWidth="MaxWidth.ExtraExtraLarge">
+            <ErrorBoundary>
+                @Body
+            </ErrorBoundary>
+            <MudScrollToTop>
+                <MudFab Color="Color.Tertiary" Icon="@Icons.Filled.ArrowCircleUp" />
+            </MudScrollToTop>
         </MudContainer>
     </MudMainContent>
 </MudLayout>
 
-<BlazoredToasts Position="ToastPosition.BottomRight"
-Timeout="10"
-SuccessClass="success-toast-override"
-SuccessIconClass="fa fa-thumbs-up"
-ErrorIconClass="fa fa-bug" />
 
 @code{
      bool _drawerOpen = true;

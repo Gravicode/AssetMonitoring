@@ -27,8 +27,8 @@ namespace AssetMonitoring.Web.Data
         
         public List<Device> FindByKeyword(string Keyword)
         {
-            var data = from x in db.Devices
-                       where x.Nama.Contains(Keyword)
+            var data = from x in db.Devices.Include(c=>c.Warehouse)
+                       where (!string.IsNullOrEmpty(x.Longitude) && !string.IsNullOrEmpty(x.Latitude)) && x.Nama.Contains(Keyword) || x.Jenis.Contains(Keyword) || x.Lokasi.Contains(Keyword) || x.Merek.Contains(Keyword)
                        select x;
             return data.ToList();
         }
