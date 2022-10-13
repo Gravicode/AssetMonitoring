@@ -1,0 +1,150 @@
+﻿@inject IJSRuntime jsRuntime
+@using System.IO
+@inject IToastService toastService
+@inject DeviceHistoryService service
+@inject WarehouseService WarehouseSvc
+@inject AzureBlobHelper blob;
+@inject DeviceService DeviceSvc
+
+@inject ISnackbar Snackbar
+
+<MudDialog>
+    <TitleContent>
+        <MudText Typo="Typo.h6">
+            <MudIcon Icon="@Icons.Material.Filled.Info" Class="mr-3 mb-n1" />
+            @CustomHeader
+        </MudText>
+    </TitleContent>
+    <DialogContent>
+        <EditForm Model="@TaskObject" OnValidSubmit="OnValidSubmit">
+            <DataAnnotationsValidator />
+            <MudGrid>
+                <MudItem xs="12" sm="12">
+                    <MudCard>
+                        <MudCardContent>
+
+                            <input type="hidden" @bind="@TaskObject.Id" />
+                            <MudDatePicker Label="Tanggal" @bind-Date="TaskObject.EventDate" />
+                           <MudSelect T="string" Label="Serial No" @bind-Value="@TaskObject.SerialNo" AnchorOrigin="Origin.BottomCenter">
+                                @if(ListDevice!=null)
+                                @foreach (Device item in ListDevice)
+                                {
+                                    <MudSelectItem Value="@(item.SerialNo)">@item.SerialNo - @item.Nama</MudSelectItem>
+                                }
+                            </MudSelect>
+                            <a class="btn btn-primary btn-sm mt-2 mb-2" style="cursor:crosshair;color:white;" @onclick="(() => { ShowScanBarcode = !ShowScanBarcode; })">Scan QR</a>
+                           
+                            <MudSelect T="string" Label="Jenis" @bind-Value="@TaskObject.HistoryType" AnchorOrigin="Origin.BottomCenter">
+                                @if (AppConstants.HistoryTypes != null)
+                                    @foreach (var item in AppConstants.HistoryTypes)
+                                    {
+                                        <MudSelectItem Value="@(item)">@item</MudSelectItem>
+                                    }
+                            </MudSelect>
+                           
+                            <a class="btn btn-success btn-sm mt-2 mb-2" style="cursor:crosshair;color:white;" @onclick="(() => PrepareForPick())" data-toggle="modal" data-target="#locationModal">Pilih Lokasi di Peta</a>
+                            <MudTextField Label="Longitude" Class="mt-3"
+                                          @bind-Value="TaskObject.Longitude" For="@(() => TaskObject.Longitude)" InputType="InputType.Text" />
+                            <MudTextField Label="Latitude" Class="mt-3"
+                                          @bind-Value="TaskObject.Latitude" For="@(() => TaskObject.Latitude)" InputType="InputType.Text" />
+                            <MudTextField Label="Data" Class="mt-3"
+                                          @bind-Value="TaskObject.Data" For="@(() => TaskObject.Data)" Lines="3" InputType="InputType.Text" />
+                            <MudTextField Label="Deskripsi" Class="mt-3"
+                                          @bind-Value="TaskObject.Deskripsi" For="@(() => TaskObject.Deskripsi)" Lines="3" InputType="InputType.Text" />
+
+
+                        </MudCardContent>
+                        <MudCardActions>
+                            <MudButton ButtonType="ButtonType.Submit" Variant="Variant.Filled" Color="Color.Primary" Class="mr-2">Simpan</MudButton>
+                            <MudButton ButtonType="ButtonType.Button" OnClick="Cancel" Variant="Variant.Filled" Color="Color.Secondary">Cancel</MudButton>
+                        </MudCardActions>
+                    </MudCard>
+                </MudItem>
+
+            </MudGrid>
+        </EditForm>
+
+    </DialogContent>
+    <DialogActions>
+
+    </DialogActions>
+
+</MudDialog>
+@if (ShowScanBarcode)
+{
+    <BarcodeReader ScanResult="((e) => { TaskObject.SerialNo =e; ShowScanBarcode = !ShowScanBarcode; })"
+               ShowScanBarcode="ShowScanBarcode"
+               Close="(()=>ShowScanBarcode=!ShowScanBarcode)"
+               ScanBtnTitle="Scan"
+               ResetBtnTitle="Reset"
+               CloseBtnTitle="Close"
+               SelectDeviceHistoryBtnTitle="Select DeviceHistory" />
+}
+<PickLocation @ref="loc" DataChanged="@RefreshLocation">
+    <CustomHeader>Pilih Lokasi</CustomHeader>
+</PickLocation>
+
+@code {
+    List<Warehouse> ListWarehouse;
+    bool ShowScanBarcode = false;
+    [CascadingParameter] MudDialogInstance MudDialog { get; set; }
+    List<Device> ListDevice;
+    private void Cancel()
+    {
+        MudDialog.Cancel();
+    }
+
+    [Parameter]
+    public string CustomHeader { get; set; }
+    [Parameter]
+    public DeviceHistory TaskObject { get; set; }
+    [Parameter]
+    public Action DataChanged { get; set; }
+    public PickLocation loc { get; set; }
+
+
+
+    void PrepareForPick()
+    {
+        loc.Address = "";
+    }
+
+    private async void RefreshLocation()
+    {
+        TaskObject.Latitude = loc.SelectedLocation.Latitude.ToString();
+        TaskObject.Longitude = loc.SelectedLocation.Longitude.ToString();
+        StateHasChanged();
+    }
+    protected override async Task OnInitializedAsync()
+    {
+        ListDevice = DeviceSvc.GetReadyDevice();
+        ListWarehouse = WarehouseSvc.GetAllData();
+    }
+    private void OnValidSubmit(EditContext context)
+    {
+        bool hasil = false;
+        if (TaskObject.Id == 0)
+        {
+
+            hasil = service.InsertData(TaskObject);
+
+        }
+        else
+        {
+            hasil = service.UpdateData(TaskObject);
+        }
+        if (!hasil)
+        {
+            Snackbar.Add("Gagal menyimpan data. Isi data dengan lengkap.", Severity.Error);
+            //toastService.ShowError("Gagal menyimpan data. Isi data dengan lengkap.", "Perhatian");
+        }
+        else
+        {
+            //In a real world scenario this bool would probably be a service to delete the item from api/database
+            Snackbar.Add("Data Saved", Severity.Success);
+            MudDialog.Close(DialogResult.Ok(TaskObject.Id));
+            DataChanged?.Invoke();
+        }
+    }
+
+}

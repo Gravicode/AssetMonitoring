@@ -1,0 +1,215 @@
+﻿@page "/master/DeviceRepair"
+
+@inject IJSRuntime jsRuntime
+@inject NavigationManager NavMgr
+@inject IToastService toastService
+@inject Blazored.LocalStorage.ILocalStorageService localStorage
+@inject IDialogService DialogService
+@using System.IO
+
+<h1>Daftar Perbaikan Device</h1>
+
+<p>Gunakan halaman ini untuk melihat data perbaikan device di workshop.</p>
+
+@if (DataDeviceRepair == null)
+{
+    <p><em>Loading...</em></p>
+}
+else
+{
+    <MudTable Context="item" Items="@DataDeviceRepair" Dense="@dense" Hover="@hover" Bordered="@bordered" Striped="@striped" Filter="new Func<DeviceRepair,bool>(FilterFunc1)" @bind-SelectedItem="selectedItem1">
+        <ToolBarContent>
+            <MudText Typo="Typo.h6">Data Perbaikan Device</MudText>
+            <MudSpacer />
+            <MudTextField @bind-Value="searchString1" Placeholder="Search" Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Search" IconSize="Size.Medium" Class="mt-0"></MudTextField>
+        </ToolBarContent>
+        <HeaderContent>
+            <MudTh>Tanggal Masuk</MudTh>
+            <MudTh>Tanggal Selesai</MudTh>
+            <MudTh>Serial No</MudTh>
+            <MudTh>Merchant</MudTh>
+            <MudTh>Alamat Merchant</MudTh>
+            <MudTh>Workshop</MudTh>
+            <MudTh>PIC</MudTh>
+            <MudTh>Keterangan</MudTh>
+            <MudTh>Status</MudTh>
+            <MudTh>Actions</MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd DataLabel="Tanggal Masuk">@item.StartDate?.ToString("dd/MMM/yyyy HH:mm")</MudTd>
+            <MudTd DataLabel="Tanggal Perkiraan Selesai">@item.FinishDate?.ToString("dd/MMM/yyyy HH:mm")</MudTd>
+            <MudTd DataLabel="Serial No.">@item.SerialNo</MudTd>
+            <MudTd DataLabel="MerchantName">@item.MerchantName</MudTd>
+            <MudTd DataLabel="Alamat">@item.Merchant?.Lokasi</MudTd>
+            <MudTd DataLabel="Workshop">@item.Workshop?.Nama</MudTd>
+            <MudTd DataLabel="Pic Name">@item.PicName</MudTd>
+            <MudTd DataLabel="Keterangan">@item.Keterangan</MudTd>
+            <MudTd DataLabel="Status">@item.Status</MudTd>
+            <MudTd DataLabel="Actions">
+                @if (HasLogin)
+                {
+                    <MudButton ButtonType="ButtonType.Button" @onclick="(() => PrepareForEdit(item))" DisableElevation="true" Variant="Variant.Filled" Color="Color.Primary" Class="mr-2">Ubah</MudButton>
+                    <MudButton ButtonType="ButtonType.Button" @onclick="(() => PrepareForDelete(item))" DisableElevation="true" Variant="Variant.Filled" Color="Color.Error" Class="mr-2">Hapus</MudButton>
+                }
+            </MudTd>
+        </RowTemplate>
+        <PagerContent>
+            <MudTablePager />
+        </PagerContent>
+    </MudTable>
+
+    <div class="d-flex flex-wrap mt-4">
+        <MudSwitch @bind-Checked="@hover" Color="Color.Primary">Hover</MudSwitch>
+        <MudSwitch @bind-Checked="@dense" Color="Color.Secondary">Dense</MudSwitch>
+        <MudSwitch @bind-Checked="@striped" Color="Color.Tertiary">Striped</MudSwitch>
+        <MudSwitch @bind-Checked="@bordered" Color="Color.Warning">Bordered</MudSwitch>
+    </div>
+
+
+}
+@if (HasLogin)
+{
+    <MudPaper Class="pa-4 mt-4">
+        <MudButton ButtonType="ButtonType.Button" @onclick="(() => InitializeitemObject())" DisableElevation="true" Variant="Variant.Filled" Color="Color.Primary" Class="mr-2">Masukan Perbaikan Baru</MudButton>
+    </MudPaper>
+}
+
+@code {
+    bool HasLogin = false;
+    DeviceRepairDetail detail;
+    AssetMonitoring.Web.Data.DeviceRepairService service;
+    string customHeader = string.Empty;
+    List<DeviceRepair> DataDeviceRepair;
+    DeviceRepair itemObject = new DeviceRepair();
+    [CascadingParameter]
+    private Task<AuthenticationState> authenticationStateTask { get; set; }
+    string UserName;
+
+    private bool dense = false;
+    private bool hover = true;
+    private bool striped = false;
+    private bool bordered = false;
+    private string searchString1 = "";
+    private DeviceRepair selectedItem1 = null;
+
+    private HashSet<DeviceRepair> selectedItems = new HashSet<DeviceRepair>();
+
+    private bool FilterFunc1(DeviceRepair element) => FilterFunc(element, searchString1);
+
+    private bool FilterFunc(DeviceRepair element, string searchString)
+    {
+        if (string.IsNullOrWhiteSpace(searchString))
+            return true;
+        if (element.MerchantName.Contains(searchString, StringComparison.OrdinalIgnoreCase))
+            return true;
+        if (element.PicName.Contains(searchString, StringComparison.OrdinalIgnoreCase))
+            return true;
+        if (element.SerialNo.Contains(searchString, StringComparison.OrdinalIgnoreCase))
+            return true;
+        if (element.Status.Contains(searchString, StringComparison.OrdinalIgnoreCase))
+            return true;
+
+        return false;
+    }
+
+    async Task DownloadFile(string Url)
+    {
+        if (!string.IsNullOrEmpty(Url))
+        {
+            NavMgr.NavigateTo(Url, true);
+        }
+        else
+        {
+            toastService.ShowError("Url kosong atau tidak valid.");
+        }
+    }
+
+    AssetMonitoring.Web.Data.UserProfileService Userservice;
+    protected override async Task OnInitializedAsync()
+    {
+
+        if (Userservice == null) Userservice = new UserProfileService();
+        var user = (await authenticationStateTask).User;
+
+        if (user.Identity.IsAuthenticated)
+        {
+            UserName = user.Identity.Name;
+            HasLogin = true;// Userservice.GetUserRole(UserName) == Roles.Admin;
+        }
+
+        if (service == null) service = new DeviceRepairService();
+
+        DataDeviceRepair = service.GetAllData();
+
+
+    }
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+        }
+    }
+
+    private async Task InitializeitemObject()
+    {
+
+        itemObject = new DeviceRepair();
+
+        customHeader = "Masukan Perbaikan Device Baru";
+
+        var action = new Action(DataChanged);
+        var parameters = new DialogParameters { ["TaskObject"] = itemObject, ["CustomHeader"] = customHeader, ["DataChanged"] = action };
+        var options = new DialogOptions { CloseOnEscapeKey = true, MaxWidth = MaxWidth.ExtraLarge };
+
+        var dialog = DialogService.Show<DeviceRepairDetail>(customHeader, parameters, options);
+        var result = await dialog.Result;
+
+        if (!result.Cancelled)
+        {
+            //In a real world scenario we would reload the data from the source here since we "removed" it in the dialog already.
+            long.TryParse(result.Data.ToString(), out var NewId);
+        }
+    }
+    private async void DataChanged()
+    {
+        DataDeviceRepair = service.GetAllData();
+        StateHasChanged();
+    }
+
+    private async Task PrepareForEdit(DeviceRepair item)
+    {
+        customHeader = "Ubah Data";
+        itemObject = item;
+        var action = new Action(DataChanged);
+        var options = new DialogOptions { CloseOnEscapeKey = true, MaxWidth = MaxWidth.ExtraLarge };
+        var parameters = new DialogParameters { ["TaskObject"] = itemObject, ["CustomHeader"] = customHeader, ["DataChanged"] = action };
+
+        var dialog = DialogService.Show<DeviceRepairDetail>(customHeader, parameters, options);
+        var result = await dialog.Result;
+
+        if (!result.Cancelled)
+        {
+            //In a real world scenario we would reload the data from the source here since we "removed" it in the dialog already.
+            long.TryParse(result.Data.ToString(), out var NewId);
+        }
+
+    }
+    private async Task PrepareForDelete(DeviceRepair item)
+    {
+        itemObject = item;
+        var options = new DialogOptions { CloseOnEscapeKey = true };
+        var dialog = DialogService.Show<ConfirmDialog>("Konfirmasi", options);
+        var result = await dialog.Result;
+
+        if (!result.Cancelled)
+        {
+            var task = service.DeleteData(itemObject.Id);
+            //await jsRuntime.InvokeAsync<object>("CloseModal", "confirmDeleteModal");
+            DataDeviceRepair = service.GetAllData();
+            itemObject = new DeviceRepair() { Id = -1 };
+        }
+    }
+
+
+}
+

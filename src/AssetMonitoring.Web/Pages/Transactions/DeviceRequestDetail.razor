@@ -1,0 +1,164 @@
+﻿@inject IJSRuntime jsRuntime
+@using System.IO
+@using System.Text.Json
+@inject IToastService toastService
+@inject DeviceRequestService service
+@inject MerchantService MerchantSvc
+@inject UserProfileService UserProfileSvc
+@inject DeviceService DeviceSvc
+@inject DeviceHistoryService DeviceHistorySvc
+@inject AzureBlobHelper blob;
+
+@inject ISnackbar Snackbar
+
+<MudDialog>
+    <TitleContent>
+        <MudText Typo="Typo.h6">
+            <MudIcon Icon="@Icons.Material.Filled.Info" Class="mr-3 mb-n1" />
+            @CustomHeader
+        </MudText>
+    </TitleContent>
+    <DialogContent>
+        <EditForm Model="@TaskObject" OnValidSubmit="OnValidSubmit">
+            <DataAnnotationsValidator />
+            <MudGrid>
+                <MudItem xs="12" sm="12">
+                    <MudCard>
+                        <MudCardContent>
+
+                            <input type="hidden" @bind="@TaskObject.Id" />
+                            <MudDatePicker Label="Tanggal Permohonan" @bind-Date="TaskObject.RequestDate" />
+                            <MudSelect T="string" Label="Serial No" @bind-Value="@TaskObject.SerialNo" AnchorOrigin="Origin.BottomCenter">
+                                @if(ListDevice!=null)
+                                @foreach (Device item in ListDevice)
+                                {
+                                    <MudSelectItem Value="@(item.SerialNo)">@item.SerialNo - @item.Nama</MudSelectItem>
+                                }
+                            </MudSelect>
+
+                            <a class="btn btn-primary btn-sm mt-2 mb-2" style="cursor:crosshair;color:white;" @onclick="(() => { ShowScanBarcode = !ShowScanBarcode; })">Scan QR</a>
+                             <MudSelect T="long?" Label="Merchant" @bind-Value="@TaskObject.MerchantId" AnchorOrigin="Origin.BottomCenter">
+                                @if(ListMerchant!=null)
+                                    @foreach (Merchant item in ListMerchant)
+                                {
+                                    <MudSelectItem Value="@((long?)item.Id)">@item.KodeMerchant - @item.Nama</MudSelectItem>
+                                }
+                            </MudSelect>
+                            <MudSelect T="long?" Label="Salesman" @bind-Value="@TaskObject.UserProfileId" AnchorOrigin="Origin.BottomCenter">
+                                @if (ListSales != null)
+                                    @foreach (UserProfile item in ListSales)
+                                    {
+                                        <MudSelectItem Value="@((long?)item.Id)">@item.FullName (@item.Phone)</MudSelectItem>
+                                    }
+                            </MudSelect>
+                            <MudSelect T="string" Label="Kondisi" @bind-Value="@TaskObject.Status" AnchorOrigin="Origin.BottomCenter">
+                                @foreach (string item in AppConstants.StatusPermohonan)
+                                {
+                                    <MudSelectItem Value="@(item)">@item</MudSelectItem>
+                                }
+                            </MudSelect>
+                           <MudTextField Label="Keterangan" Class="mt-3"
+                                          @bind-Value="TaskObject.Keterangan" For="@(() => TaskObject.Keterangan)" Lines="3" InputType="InputType.Text" />
+
+                        </MudCardContent>
+                        <MudCardActions>
+                            <MudButton ButtonType="ButtonType.Submit" Variant="Variant.Filled" Color="Color.Primary" Class="mr-2">Simpan</MudButton>
+                            <MudButton ButtonType="ButtonType.Button" OnClick="Cancel" Variant="Variant.Filled" Color="Color.Secondary">Cancel</MudButton>
+                        </MudCardActions>
+                    </MudCard>
+                </MudItem>
+
+            </MudGrid>
+        </EditForm>
+
+    </DialogContent>
+    <DialogActions>
+
+    </DialogActions>
+
+</MudDialog>
+@if (ShowScanBarcode)
+{
+    <BarcodeReader ScanResult="((e) => { TaskObject.SerialNo =e; ShowScanBarcode = !ShowScanBarcode; })"
+               ShowScanBarcode="ShowScanBarcode"
+               Close="(()=>ShowScanBarcode=!ShowScanBarcode)"
+               ScanBtnTitle="Scan"
+               ResetBtnTitle="Reset"
+               CloseBtnTitle="Close"
+               SelectDeviceRequestBtnTitle="Select DeviceRequest" />
+}
+
+@code {
+    List<Merchant> ListMerchant;
+    List<Device> ListDevice;
+    List<UserProfile> ListSales;
+    bool ShowScanBarcode = false;
+    [CascadingParameter] MudDialogInstance MudDialog { get; set; }
+
+    private void Cancel()
+    {
+        MudDialog.Cancel();
+    }
+
+    [Parameter]
+    public string CustomHeader { get; set; }
+    [Parameter]
+    public DeviceRequest TaskObject { get; set; }
+    [Parameter]
+    public Action DataChanged { get; set; }
+
+
+
+    protected override async Task OnInitializedAsync()
+    {
+        ListMerchant = MerchantSvc.GetAllData();
+        ListSales = UserProfileSvc.GetSalesman();
+        ListDevice = DeviceSvc.GetReadyDevice();
+    }
+
+    private void OnValidSubmit(EditContext context)
+    {
+        bool hasil = false;
+        if (TaskObject.UserProfileId > 0)
+        {
+
+            TaskObject.PicName = UserProfileSvc.GetDataById(TaskObject.UserProfileId).FullName;
+        }
+        if (TaskObject.MerchantId > 0)
+        {
+
+            TaskObject.MerchantName = MerchantSvc.GetDataById(TaskObject.MerchantId).Nama;
+        }
+        if (TaskObject.Id == 0)
+        {
+            hasil = service.InsertData(TaskObject);
+            var newHist = new DeviceHistory()
+                {
+                    EventDate = DateHelper.GetLocalTimeNow(),
+                    Deskripsi = $"permohonan {TaskObject.SerialNo} oleh {TaskObject.MerchantName} untuk {TaskObject.Keterangan}, diproses oleh {TaskObject.PicName}",
+                    Data = JsonSerializer.Serialize(TaskObject),
+                    HistoryType = AppConstants.HistoryTypes[0],
+                    SerialNo = TaskObject.SerialNo
+                };
+            DeviceHistorySvc.InsertData(newHist);
+
+        }
+        else
+        {
+            hasil = service.UpdateData(TaskObject);
+        }
+        if (!hasil)
+        {
+            Snackbar.Add("Gagal menyimpan data. Isi data dengan lengkap.", Severity.Error);
+            //toastService.ShowError("Gagal menyimpan data. Isi data dengan lengkap.", "Perhatian");
+        }
+        else
+        {
+            //In a real world scenario this bool would probably be a service to delete the item from api/database
+            Snackbar.Add("Data Saved", Severity.Success);
+            MudDialog.Close(DialogResult.Ok(TaskObject.Id));
+            DataChanged?.Invoke();
+        }
+    }
+
+}

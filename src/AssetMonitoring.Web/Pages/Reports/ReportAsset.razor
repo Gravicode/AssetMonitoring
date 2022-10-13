@@ -1,0 +1,25 @@
+﻿@page "/report/ReportAsset"
+
+@inject IJSRuntime jsRuntime
+@inject NavigationManager NavMgr
+@namespace NgajiOnline.Pages.Master
+@inject IToastService toastService
+@inject Blazored.LocalStorage.ILocalStorageService localStorage
+@using System.IO
+
+<h1>Laporan Asset</h1>
+<MudPaper Height="868" Style="height:800px;" MinWidth="1024">
+    <iframe onload="this.width=screen.width-300;this.height=868;" src="@AppConstants.ReportAssetUrl" frameborder="0" allowFullScreen="true"></iframe>
+
+</MudPaper>
+
+
+@code {
+    protected override async Task OnInitializedAsync()
+    {
+
+
+
+    }
+
+}

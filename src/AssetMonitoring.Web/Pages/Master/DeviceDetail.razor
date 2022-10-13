@@ -1,0 +1,177 @@
+﻿@inject IJSRuntime jsRuntime
+@using System.IO
+@using System.Text.Json
+@inject IToastService toastService
+@inject DeviceService service
+@inject WarehouseService WarehouseSvc
+@inject DeviceHistoryService DeviceHistorySvc
+@inject AzureBlobHelper blob;
+
+@inject ISnackbar Snackbar
+
+<MudDialog>
+    <TitleContent>
+        <MudText Typo="Typo.h6">
+            <MudIcon Icon="@Icons.Material.Filled.Info" Class="mr-3 mb-n1" />
+            @CustomHeader
+        </MudText>
+    </TitleContent>
+    <DialogContent>
+        <EditForm Model="@TaskObject" OnValidSubmit="OnValidSubmit">
+            <DataAnnotationsValidator />
+            <MudGrid>
+                <MudItem xs="12" sm="12">
+                    <MudCard>
+                        <MudCardContent>
+
+                            <input type="hidden" @bind="@TaskObject.Id" />
+                            <MudTextField Label="Serial No" Class="mt-3"
+                                          @bind-Value="TaskObject.SerialNo" For="@(() => TaskObject.SerialNo)" InputType="InputType.Text" />
+                            <a class="btn btn-primary btn-sm mt-2 mb-2" style="cursor:crosshair;color:white;" @onclick="(() => { ShowScanBarcode = !ShowScanBarcode; })" >Scan QR</a>
+                            <MudTextField Label="Nama" HelperText="Nama Device"
+                                          @bind-Value="TaskObject.Nama" For="@(() => TaskObject.Nama)" />
+                            <MudSelect T="string" Label="Jenis" @bind-Value="@TaskObject.Jenis" AnchorOrigin="Origin.BottomCenter">
+                                @if (AppConstants.JenisDevice != null)
+                                    @foreach (var item in AppConstants.JenisDevice)
+                                    {
+                                        <MudSelectItem Value="@(item)">@item</MudSelectItem>
+                                    }
+                            </MudSelect>
+                            <MudTextField Label="Merek" Class="mt-3"
+                                          @bind-Value="TaskObject.Merek" For="@(() => TaskObject.Merek)" InputType="InputType.Text" />
+                            <MudDatePicker Label="Tanggal Pasang" @bind-Date="TaskObject.TanggalPasang" />
+                            <MudDatePicker Label="Tanggal Produksi" @bind-Date="TaskObject.TanggalProduksi" />
+                            
+
+                            <MudTextField Label="Lokasi" Class="mt-3"
+                                          @bind-Value="TaskObject.Lokasi" For="@(() => TaskObject.Lokasi)" InputType="InputType.Text" />
+                            <a class="btn btn-success btn-sm mt-2 mb-2" style="cursor:crosshair;color:white;" @onclick="(() => PrepareForPick())" data-toggle="modal" data-target="#locationModal">Pilih Lokasi di Peta</a>
+                            <MudTextField Label="Longitude" Class="mt-3"
+                                          @bind-Value="TaskObject.Longitude" For="@(() => TaskObject.Longitude)" InputType="InputType.Text" />
+                            <MudTextField Label="Latitude" Class="mt-3"
+                                          @bind-Value="TaskObject.Latitude" For="@(() => TaskObject.Latitude)" InputType="InputType.Text" />
+                           
+                            <MudSelect T="DeviceConditions" Label="Kondisi" @bind-Value="@TaskObject.Status" AnchorOrigin="Origin.BottomCenter">
+                                
+                                @foreach (DeviceConditions item in Enum.GetValues(typeof(DeviceConditions)))
+                                {
+                                    <MudSelectItem Value="@(item)">@item.ToString()</MudSelectItem>
+
+                                }                               
+                            </MudSelect>
+                            <MudCheckBox @bind-Checked="@TaskObject.IsAvailable">Is Available</MudCheckBox>
+                            <MudSelect T="long?" Label="Asal Warehouse" @bind-Value="@TaskObject.WarehouseId" AnchorOrigin="Origin.BottomCenter">
+                                @if(ListWarehouse!=null)
+                                @foreach (Warehouse item in ListWarehouse)
+                                {
+                                    <MudSelectItem Value="@((long?)item.Id)">@item.KodeWarehouse - @item.Nama</MudSelectItem>
+
+                                }
+                            </MudSelect>
+
+                        </MudCardContent>
+                        <MudCardActions>
+                            <MudButton ButtonType="ButtonType.Submit" Variant="Variant.Filled" Color="Color.Primary" Class="mr-2">Simpan</MudButton>
+                            <MudButton ButtonType="ButtonType.Button" OnClick="Cancel" Variant="Variant.Filled" Color="Color.Secondary">Cancel</MudButton>
+                        </MudCardActions>
+                    </MudCard>
+                </MudItem>
+
+            </MudGrid>
+        </EditForm>
+       
+    </DialogContent>
+    <DialogActions>
+
+    </DialogActions>
+
+</MudDialog>
+@if (ShowScanBarcode)
+{
+    <BarcodeReader ScanResult="((e) => { TaskObject.SerialNo =e; ShowScanBarcode = !ShowScanBarcode; })"
+               ShowScanBarcode="ShowScanBarcode"
+               Close="(()=>ShowScanBarcode=!ShowScanBarcode)"
+               ScanBtnTitle="Scan"
+               ResetBtnTitle="Reset"
+               CloseBtnTitle="Close"
+               SelectDeviceBtnTitle="Select Device" />
+}
+<PickLocation @ref="loc" DataChanged="@RefreshLocation">
+    <CustomHeader>Pilih Lokasi</CustomHeader>
+</PickLocation>
+
+@code {
+    List<Warehouse> ListWarehouse;
+    bool ShowScanBarcode = false;
+    [CascadingParameter] MudDialogInstance MudDialog { get; set; }
+
+    private void Cancel()
+    {
+        MudDialog.Cancel();
+    }
+
+    [Parameter]
+    public string CustomHeader { get; set; }
+    [Parameter]
+    public Device TaskObject { get; set; }
+    [Parameter]
+    public Action DataChanged { get; set; }
+    public PickLocation loc { get; set; }
+
+
+
+    void PrepareForPick()
+    {
+        loc.Address = TaskObject.Lokasi;
+    }
+
+    private async void RefreshLocation()
+    {
+        TaskObject.Latitude = loc.SelectedLocation.Latitude.ToString();
+        TaskObject.Longitude = loc.SelectedLocation.Longitude.ToString();
+        StateHasChanged();
+    }
+    protected override async Task OnInitializedAsync()
+    {
+        ListWarehouse = WarehouseSvc.GetAllData();
+    }
+    private void OnValidSubmit(EditContext context)
+    {
+        bool hasil = false;
+        if (TaskObject.Id == 0)
+        {
+
+            hasil = service.InsertData(TaskObject);
+            if (hasil)
+            {
+                var newHist = new DeviceHistory()
+                    {
+                        EventDate = DateHelper.GetLocalTimeNow(),
+                        Deskripsi = $"daftar baru device: {TaskObject.SerialNo}, nama: {TaskObject.Nama}, jenis {TaskObject.Jenis} di {TaskObject.Lokasi}",
+                        Data = JsonSerializer.Serialize(TaskObject),
+                        HistoryType = AppConstants.HistoryTypes[7],
+                        SerialNo = TaskObject.SerialNo
+                    };
+                DeviceHistorySvc.InsertData(newHist);
+            }
+        }
+        else
+        {
+            hasil = service.UpdateData(TaskObject);
+        }
+        if (!hasil)
+        {
+            Snackbar.Add("Gagal menyimpan data. Isi data dengan lengkap.", Severity.Error);
+            //toastService.ShowError("Gagal menyimpan data. Isi data dengan lengkap.", "Perhatian");
+        }
+        else
+        {
+
+            //In a real world scenario this bool would probably be a service to delete the item from api/database
+            Snackbar.Add("Data Saved", Severity.Success);
+            MudDialog.Close(DialogResult.Ok(TaskObject.Id));
+            DataChanged?.Invoke();
+        }
+    }
+
+}

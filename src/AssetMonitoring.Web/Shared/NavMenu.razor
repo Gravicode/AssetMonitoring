@@ -1,0 +1,24 @@
+﻿<MudNavMenu>
+     <MudText Typo="Typo.body2" Class="px-4 mud-text-secondary">Menu</MudText>
+    <MudDivider Class="my-2" />
+    <MudNavLink Href="" Match="NavLinkMatch.All" Icon="@Icons.Material.Filled.Home">Beranda</MudNavLink>
+    <MudNavGroup Icon="@Icons.Filled.Apps"  Title="Master Data" Expanded="false">
+        <MudNavLink Href="/master/Device" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.Devices">Device</MudNavLink>
+        <MudNavLink Href="/master/Warehouse" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.Warehouse">Warehouse</MudNavLink>
+        <MudNavLink Href="/master/Workshop" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.House">Workshop</MudNavLink>
+        <MudNavLink Href="/master/Merchant" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.Store">Merchant</MudNavLink>
+    </MudNavGroup>
+    
+    <MudNavGroup Icon="@Icons.Filled.Apps" Title="Operations" Expanded="false">
+        <MudNavLink Href="/master/DeviceRequest" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.WavingHand">Permohonan Device</MudNavLink>
+        <MudNavLink Href="/master/DeviceRepair" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.Hardware">Perbaikan Device</MudNavLink>
+        <MudNavLink Href="/master/DeviceHistory" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.Notes">History Device</MudNavLink>
+       
+    </MudNavGroup>
+    <MudNavGroup Icon="@Icons.Filled.Folder" Title="Report" Expanded="false">
+        <MudNavLink Href="/report/ReportAsset" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.TableView">Report Asset</MudNavLink>
+    
+       
+    </MudNavGroup>
+
+</MudNavMenu>

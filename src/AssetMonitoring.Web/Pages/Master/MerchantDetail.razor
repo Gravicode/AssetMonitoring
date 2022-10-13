@@ -1,0 +1,126 @@
+﻿@inject IJSRuntime jsRuntime
+@using System.IO
+@inject IToastService toastService
+@inject MerchantService service
+@inject AzureBlobHelper blob;
+
+@inject ISnackbar Snackbar
+
+<MudDialog>
+    <TitleContent>
+        <MudText Typo="Typo.h6">
+            <MudIcon Icon="@Icons.Material.Filled.Info" Class="mr-3 mb-n1" />
+            @CustomHeader
+        </MudText>
+    </TitleContent>
+    <DialogContent>
+        <EditForm Model="@TaskObject" OnValidSubmit="OnValidSubmit">
+            <DataAnnotationsValidator />
+            <MudGrid>
+                <MudItem xs="12" sm="12">
+                    <MudCard>
+                        <MudCardContent>
+                            <input type="hidden" @bind="@TaskObject.Id" />
+                            <MudTextField Label="Nama" HelperText="Nama Merchant"
+                                          @bind-Value="TaskObject.Nama" For="@(() => TaskObject.Nama)" />
+                            <MudTextField Label="Kode Merchant" HelperText="Kode Merchant"
+                                          @bind-Value="TaskObject.KodeMerchant" For="@(() => TaskObject.KodeMerchant)" />
+
+                            <MudTextField Label="Lokasi" Class="mt-3"
+                                          @bind-Value="TaskObject.Lokasi" For="@(() => TaskObject.Lokasi)" InputType="InputType.Text" />
+                            <a class="btn btn-success btn-sm mt-2 mb-2" style="cursor:crosshair;color:white;" @onclick="(() => PrepareForPick())" data-toggle="modal" data-target="#locationModal">Pilih Lokasi di Peta</a>
+                            <MudTextField Label="Longitude" Class="mt-3"
+                                          @bind-Value="TaskObject.Longitude" For="@(() => TaskObject.Longitude)" InputType="InputType.Text" />
+                            <MudTextField Label="Latitude" Class="mt-3"
+                                          @bind-Value="TaskObject.Latitude" For="@(() => TaskObject.Latitude)" InputType="InputType.Text" />
+                            <MudTextField Label="Nama Pic" Class="mt-3"
+                                          @bind-Value="TaskObject.Pic" For="@(() => TaskObject.Pic)" InputType="InputType.Text" />
+                            <MudTextField Label="Hp Pic" Class="mt-3"
+                                          @bind-Value="TaskObject.NoHpPic" For="@(() => TaskObject.NoHpPic)" InputType="InputType.Telephone" />
+
+                            <MudTextField Label="Keterangan" Class="mt-3"
+                                          @bind-Value="TaskObject.Keterangan" For="@(() => TaskObject.Keterangan)" InputType="InputType.Text" />
+
+                        </MudCardContent>
+                        <MudCardActions>
+                            <MudButton ButtonType="ButtonType.Submit" Variant="Variant.Filled" Color="Color.Primary" Class="mr-2">Simpan</MudButton>
+                            <MudButton ButtonType="ButtonType.Button" OnClick="Cancel" Variant="Variant.Filled" Color="Color.Secondary">Cancel</MudButton>
+                        </MudCardActions>
+                    </MudCard>
+                </MudItem>
+
+            </MudGrid>
+        </EditForm>
+    </DialogContent>
+    <DialogActions>
+
+    </DialogActions>
+</MudDialog>
+
+<PickLocation @ref="loc" DataChanged="@RefreshLocation">
+    <CustomHeader>Pilih Lokasi</CustomHeader>
+</PickLocation>
+
+
+@code {
+
+    [CascadingParameter] MudDialogInstance MudDialog { get; set; }
+    public PickLocation loc { get; set; }
+
+
+
+    void PrepareForPick()
+    {
+        loc.Address = TaskObject.Lokasi;
+    }
+
+    private async void RefreshLocation()
+    {
+        TaskObject.Latitude = loc.SelectedLocation.Latitude.ToString();
+        TaskObject.Longitude = loc.SelectedLocation.Longitude.ToString();
+        StateHasChanged();
+    }
+    private void Cancel()
+    {
+        MudDialog.Cancel();
+    }
+
+    [Parameter]
+    public string CustomHeader { get; set; }
+    [Parameter]
+    public Merchant TaskObject { get; set; }
+    [Parameter]
+    public Action DataChanged { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+    }
+    private void OnValidSubmit(EditContext context)
+    {
+        bool hasil = false;
+        if (TaskObject.Id == 0)
+        {
+
+            hasil = service.InsertData(TaskObject);
+
+        }
+        else
+        {
+            hasil = service.UpdateData(TaskObject);
+        }
+
+        if (!hasil)
+        {
+            Snackbar.Add("Gagal menyimpan data. Isi data dengan lengkap.", Severity.Error);
+            //toastService.ShowError("Gagal menyimpan data. Isi data dengan lengkap.", "Perhatian");
+        }
+        else
+        {
+            //In a real world scenario this bool would probably be a service to delete the item from api/database
+            Snackbar.Add("Data Saved", Severity.Success);
+            MudDialog.Close(DialogResult.Ok(TaskObject.Id));
+            DataChanged?.Invoke();
+        }
+    }
+
+}
